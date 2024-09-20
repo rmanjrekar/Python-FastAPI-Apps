@@ -1,0 +1,33 @@
+version: '3'
+services:
+  mysqldb:
+    image: mysql:latest
+    container_name: mysqldb
+    environment:
+      MYSQL_DATABASE: test
+      MYSQL_ROOT_PASSWORD: password
+    ports:
+      - "3306:3306"
+    networks:
+      - mynetwork
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql 
+
+  fastapi-app:
+    build:
+      context: .
+      dockerfile: ./Dockerfile  # Path to your Dockerfile for FastAPI
+    ports:
+      - "8000:8000"
+    networks:
+      - mynetwork
+    depends_on:
+      - mysqldb
+    command: ["./wait-for-it.sh", "mysqldb:3306", "--", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ./wait-for-it.sh:/wait-for-it.sh
+    environment:
+      WAIT_HOSTS: mysqldb:3306
+
+networks:
+  mynetwork:
