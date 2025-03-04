@@ -11,7 +11,13 @@ services:
     networks:
       - mynetwork
     volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql 
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      retries: 5
+      start_period: 30s
+      timeout: 30s
 
   fastapi-app:
     build:
@@ -22,12 +28,9 @@ services:
     networks:
       - mynetwork
     depends_on:
-      - mysqldb
-    command: ["./wait-for-it.sh", "mysqldb:3306", "--", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-    volumes:
-      - ./wait-for-it.sh:/wait-for-it.sh
-    environment:
-      WAIT_HOSTS: mysqldb:3306
+      mysqldb:
+        condition: service_healthy
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 networks:
   mynetwork:
