@@ -1,87 +1,10 @@
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
-from passlib.context import CryptContext
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from starlette.requests import Request
-from datetime import datetime, timedelta
-import jwt
-from pydantic import BaseModel, EmailStr
+from utils.dependencies import get_db
+from models.users import User
+from services.user_service import get_current_user, verify_password, get_token, LoginRequest, UserCreate, UserResponse, pwd_context
 
 router = APIRouter()
-
-DATABASE_URL = "mysql+mysqlconnector://root:password@mysqldb/test"
-SECRET_KEY = "your-secret-key"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-Base = declarative_base()
-
-# Create a password context for password hashing and verification
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
-
-class User(Base):
-    __tablename__ = "user"
-
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), unique=True, index=True)
-    password = Column(String(255))
-
-class UserCreate(BaseModel):
-    email: EmailStr
-    password: str
-
-    class Config:
-        orm_mode = True
-
-class UserResponse(BaseModel):
-    id: int
-    email: EmailStr
-
-    class Config:
-        orm_mode = True
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-Base.metadata.create_all(bind=engine)
-
-# Dependency to get the database session
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-# Define a dependency to get the current user based on the token
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has expired")
-    except jwt.DecodeError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect Token")
-
-    user = db.query(User).filter(User.email == email).first()
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-
-    return user
 
 @router.post("/login", response_model=dict)
 async def login_for_access_token(request: LoginRequest, db: Session = Depends(get_db)):
@@ -101,10 +24,7 @@ async def login_for_access_token(request: LoginRequest, db: Session = Depends(ge
             detail="Invalid credentials",
         )
 
-    expiration = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    token_data = {"sub": user.email, "exp": expiration}
-    token = jwt.encode(token_data, SECRET_KEY, algorithm=ALGORITHM)
-    return {"access_token": token, "token_type": "bearer"}
+    return get_token(user.email)
 
 @router.post("/users")
 async def create_user(request: UserCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -127,3 +47,7 @@ def get_user(user_id: int, user: User = Depends(get_current_user), db: Session =
     if searched_user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return searched_user
+
+@router.get("/health")
+def health():
+    return {"errors" : None}
