@@ -1,13 +1,12 @@
 # video_converter/routes.py
 import os
-from fastapi import APIRouter, File, UploadFile, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, Depends, HTTPException
 from sqlalchemy.orm import Session
 from users.routes import User, get_current_user, get_db
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import status
 from moviepy.editor import VideoFileClip
 from fastapi.responses import FileResponse
-from starlette.requests import Request
 import pydub
 from pydantic import BaseModel
 from typing import Optional
